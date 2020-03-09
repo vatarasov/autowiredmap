@@ -6,10 +6,15 @@ import com.github.vatarasov.autowiredmap.AutowiredMapTest.ImplementationB1;
 import com.github.vatarasov.autowiredmap.AutowiredMapTest.ImplementationB2;
 import com.github.vatarasov.autowiredmap.AutowiredMapTest.ImplementationC1;
 import com.github.vatarasov.autowiredmap.AutowiredMapTest.ImplementationC2;
+import com.github.vatarasov.autowiredmap.AutowiredMapTest.ProxiedImplementation;
+import com.github.vatarasov.autowiredmap.AutowiredMapTest.ProxyBeanPostProcessor;
 import com.github.vatarasov.autowiredmap.AutowiredMapTest.WithAutowiredMaps;
+import java.lang.reflect.Proxy;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.stereotype.Component;
 
@@ -20,16 +25,40 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * @since 09.03.2020
  */
 @SpringBootTest(classes = {
-    AutowiredMapAnnotationBeanPostProcessor.class, WithAutowiredMaps.class,
+    AutowiredMapAnnotationBeanPostProcessor.class,
+    WithAutowiredMaps.class,
     ImplementationA1.class, ImplementationA2.class,
     ImplementationB1.class, ImplementationB2.class,
-    ImplementationC1.class, ImplementationC2.class
+    ImplementationC1.class, ImplementationC2.class,
+    ProxiedImplementation.class, ProxyBeanPostProcessor.class
 })
 public class AutowiredMapTest {
+
+    @Component
+    static class ProxyBeanPostProcessor implements BeanPostProcessor {
+        @Override
+        public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+            if ("autowiredMapTest.ProxiedImplementation".equals(beanName)) {
+                return Proxy.newProxyInstance(ProxiedInterface.class.getClassLoader(), new Class<?>[] { ProxiedInterface.class },
+                    (proxy, method, args) -> {
+                        Object result = method.invoke(bean, args);
+                        if ("getName".equals(method.getName())) {
+                            return "proxied" + result;
+                        }
+                        return result;
+                    });
+            }
+            return bean;
+        }
+    }
 
     private interface InterfaceA {}
     private interface InterfaceB {}
     private interface InterfaceC {}
+
+    private interface ProxiedInterface {
+        String getName();
+    }
 
     @MapEntryComponent(map = "mapA", key = "a1")
     static class ImplementationA1 implements InterfaceA {}
@@ -51,6 +80,14 @@ public class AutowiredMapTest {
 
     @Component
     static class ImplementationC2 implements InterfaceC {}
+
+    @MapEntryComponent(map = "proxyMap", key = "proxyKey")
+    static class ProxiedImplementation implements ProxiedInterface {
+        @Override
+        public String getName() {
+            return "impl";
+        }
+    }
 
     @Component
     static class WithAutowiredMaps {
@@ -75,6 +112,9 @@ public class AutowiredMapTest {
 
         @Autowired
         private Map<String, InterfaceC> mapC2;
+
+        @AutowiredMap(name = "proxyMap")
+        private Map<String, ProxiedInterface> proxyMap;
 
         @Autowired
         WithAutowiredMaps(Map<String, InterfaceA> mapA2) {
@@ -153,5 +193,11 @@ public class AutowiredMapTest {
         assertEquals(withAutowiredMaps.mapC2.size(), 2);
         assertEquals(withAutowiredMaps.mapC2.get("autowiredMapTest.ImplementationC1"), implementationC1);
         assertEquals(withAutowiredMaps.mapC2.get("autowiredMapTest.ImplementationC2"), implementationC2);
+    }
+
+    @Test
+    public void shouldUseAnnotatedKeysForInjectedProxy() {
+        assertEquals(withAutowiredMaps.proxyMap.size(), 1);
+        assertEquals(withAutowiredMaps.proxyMap.get("proxyKey").getName(), "proxiedimpl");
     }
 }
