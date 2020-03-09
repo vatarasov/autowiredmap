@@ -1,0 +1,23 @@
+plugins {
+	id 'java'
+}
+
+group = 'com.github.vtarasov'
+version = '1.0.0'
+sourceCompatibility = '1.8'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compileOnly('org.springframework:spring-beans:5.2.4.RELEASE')
+	compileOnly('org.springframework:spring-context:5.2.4.RELEASE')
+	testImplementation('org.springframework.boot:spring-boot-starter-test:2.2.5.RELEASE') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+}
+
+test {
+	useJUnitPlatform()
+}
